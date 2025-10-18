@@ -462,8 +462,7 @@ import openfl.geom.Point;
 	 */
 	public overload inline extern function scale(point:Point):FlxPoint
 	{
-		scale(point.x, point.y);
-		return this;
+		return scale(point.x, point.y);
 	}
 
 	/**
@@ -489,6 +488,69 @@ import openfl.geom.Point;
 	public inline function scaleNew(k:Float):FlxPoint
 	{
 		return clone().scale(k);
+	}
+
+
+	/**
+	 * Divide this point.
+	 *
+	 * @param   x  The x divide coefficient
+	 * @param   y  The y divide coefficient
+	 * @return  this point
+	 */
+	public overload inline extern function divide(x:Float, y:Float):FlxPoint
+	{
+		this.x /= x;
+		this.y /= y;
+		return this;
+	}
+
+	/**
+	 * Divide this point.
+	 *
+	 * @param   amount  The divide coefficient
+	 * @return  this point
+	 */
+	public overload inline extern function divide(amount:Float):FlxPoint
+	{
+		this.x /= amount;
+		this.y /= amount;
+		return this;
+	}
+
+	/**
+	 * Divide this point by another point.
+	 *
+	 * @param   point  The x and y divide coefficient
+	 * @return  this point
+	 */
+	public overload inline extern function divide(point:Point):FlxPoint
+	{
+		return divide(point.x, point.y);
+	}
+
+	/**
+	 * Divide this point by another point.
+	 *
+	 * @param   point  The x and y divide coefficient
+	 * @return  divided point
+	 */
+	public inline function dividePoint(point:FlxPoint):FlxPoint
+	{
+		divide(point.x, point.y);
+		point.putWeak();
+		return this;
+	}
+
+	/**
+	 * Returns divided copy of this point.
+	 *
+	 * @param   k - divide coefficient
+	 * @return  divided point
+	 */
+	public inline function divideNew(k:Float):FlxPoint
+	{
+		return clone().divide(k);
 	}
 
 	/**
@@ -624,8 +686,8 @@ import openfl.geom.Point;
 	 */
 	public inline function floor():FlxPoint
 	{
-		x = Math.floor(x);
-		y = Math.floor(y);
+		x = Math.ffloor(x);
+		y = Math.ffloor(y);
 		return this;
 	}
 
@@ -634,8 +696,8 @@ import openfl.geom.Point;
 	 */
 	public inline function ceil():FlxPoint
 	{
-		x = Math.ceil(x);
-		y = Math.ceil(y);
+		x = Math.fceil(x);
+		y = Math.fceil(y);
 		return this;
 	}
 
@@ -644,8 +706,8 @@ import openfl.geom.Point;
 	 */
 	public inline function round():FlxPoint
 	{
-		x = Math.round(x);
-		y = Math.round(y);
+		x = Math.fround(x);
+		y = Math.fround(y);
 		return this;
 	}
 
@@ -661,6 +723,18 @@ import openfl.geom.Point;
 	public inline function inCoords(x:Float, y:Float, width:Float, height:Float):Bool
 	{
 		return FlxMath.pointInCoordinates(this.x, this.y, x, y, width, height);
+	}
+
+	public inline function boundByRect(rect:FlxRect):FlxPoint
+	{
+		return bound(rect.right, rect.top, rect.left, rect.bottom);
+	}
+
+	public inline function bound(right:Float, top:Float, left:Float, bottom:Float):FlxPoint
+	{
+		final newX = FlxMath.bound(this.x, right, left);
+		final newY = FlxMath.bound(this.y, top, bottom);
+		return set(newX, newY);
 	}
 
 	/**
@@ -752,7 +826,7 @@ import openfl.geom.Point;
 	 */
 	public overload inline extern function distanceSquaredTo(x:Float, y:Float):Float
 	{
-		return (this.x - x) * (this.x - x) + (this.y - y) * (this.y - y);
+		return (this.x - x) * (this.x - x) + (this.y - y) + (this.y - y);
 	}
 
 	/**

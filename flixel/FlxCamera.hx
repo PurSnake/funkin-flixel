@@ -10,8 +10,8 @@ import openfl.geom.Point;
 import openfl.geom.Rectangle;
 import flixel.graphics.FlxGraphic;
 import flixel.graphics.frames.FlxFrame;
-import flixel.graphics.tile.FlxDrawBaseItem;
 import flixel.graphics.tile.FlxDrawQuadsItem;
+import flixel.graphics.tile.FlxDrawBaseItem;
 import flixel.graphics.tile.FlxDrawTrianglesItem;
 import flixel.math.FlxMath;
 import flixel.math.FlxMatrix;
@@ -87,6 +87,7 @@ class FlxCamera extends FlxBasic
 	 */
 	public var scaleY(default, null):Float = 0;
 
+	public var originFactor:FlxCallbackPoint;
 	/**
 	 * Product of camera's `scaleX` and game's scale mode `scale.x` multiplication.
 	 */
@@ -215,12 +216,12 @@ class FlxCamera extends FlxBasic
 	/**
 	 * How wide the camera display is, in game pixels.
 	 */
-	public var width(default, set):Int = 0;
+	public var width(get, set):Int;
 
 	/**
 	 * How tall the camera display is, in game pixels.
 	 */
-	public var height(default, set):Int = 0;
+	public var height(get, set):Int;
 
 	/**
 	 * The zoom level of this camera. `1` = 1:1, `2` = 2x zoom, etc.
@@ -242,6 +243,25 @@ class FlxCamera extends FlxBasic
 	 * @since 5.2.0
 	 */
 	public var viewMarginY(default, null):Float;
+
+	/**
+	 * The factor of moving the camera closer (or further away) along the X-axis.
+	 */
+	public var viewAdjustScaleX(default, null):Float;
+	/**
+	 * The factor of moving the camera closer (or further away) along the X-axis.
+	 */
+	public var viewAdjustScaleY(default, null):Float;
+
+	// deprecated vars
+	@:deprecated("use viewMarginLeft or viewMarginX")
+	var viewOffsetX(get, set):Float;
+	@:deprecated("use viewMarginTop or viewMarginY")
+	var viewOffsetY(get, set):Float;
+	@:deprecated("use viewMarginLeft or viewMarginX")
+	var viewOffsetWidth(get, never):Float;
+	@:deprecated("use viewMarginTop or viewMarginY")
+	var viewOffsetHeight(get, never):Float;
 
 	// delegates
 
@@ -273,13 +293,13 @@ class FlxCamera extends FlxBasic
 	 * The size of the camera's view, in world space.
 	 * @since 5.2.0
 	 */
-	public var viewWidth(get, never):Float;
+	public var viewWidth:Float;
 
 	/**
 	 * The size of the camera's view, in world space.
 	 * @since 5.2.0
 	 */
-	public var viewHeight(get, never):Float;
+	public var viewHeight:Float;
 
 	/**
 	 * The left of the camera's view, in world space.
@@ -355,9 +375,13 @@ class FlxCamera extends FlxBasic
 	public var followLead(default, null):FlxPoint = FlxPoint.get();
 
 	/**
-	 * Enables or disables the filters set via the `filters` array.
+	 * Enables or disables the filters set via `setFilters()`.
 	 */
 	public var filtersEnabled:Bool = true;
+
+
+	var _width:Null<Int> = null;
+	var _height:Null<Int> = null;
 
 	/**
 	 * Internal, used in blit render mode in camera's `fill()` method for less garbage creation.
@@ -819,12 +843,12 @@ class FlxCamera extends FlxBasic
 	public function drawTriangles(graphic:FlxGraphic, vertices:DrawData<Float>, indices:DrawData<Int>, uvtData:DrawData<Float>, ?colors:DrawData<Int>,
 			?position:FlxPoint, ?blend:BlendMode, repeat:Bool = false, smoothing:Bool = false, ?transform:ColorTransform, ?shader:FlxShader):Void
 	{
-		final cameraBounds = _bounds.set(viewMarginLeft, viewMarginTop, viewWidth, viewHeight);
-		
 		if (FlxG.renderBlit)
 		{
 			if (position == null)
 				position = renderPoint.set();
+
+			_bounds.set(0, 0, width, height);
 
 			var verticesLength:Int = vertices.length;
 			var currentVertexPosition:Int = 0;
@@ -856,7 +880,7 @@ class FlxCamera extends FlxBasic
 
 			position.putWeak();
 
-			if (!cameraBounds.overlaps(bounds))
+			if (!_bounds.overlaps(bounds))
 			{
 				drawVertices.splice(drawVertices.length - verticesLength, verticesLength);
 			}
@@ -899,7 +923,7 @@ class FlxCamera extends FlxBasic
 			final hasColorOffsets = (transform != null && transform.hasRGBAOffsets());
 
 			final drawItem = startTrianglesBatch(graphic, smoothing, isColored, blend, hasColorOffsets, shader);
-			drawItem.addTriangles(vertices, indices, uvtData, colors, position, cameraBounds, transform);
+			drawItem.addTriangles(vertices, indices, uvtData, colors, position, _bounds, transform);
 		}
 	}
 
@@ -972,8 +996,8 @@ class FlxCamera extends FlxBasic
 		object.x -= scroll.x * totalScaleX;
 		object.y -= scroll.y * totalScaleY;
 
-		object.x -= 0.5 * width * (scaleX - initialZoom) * FlxG.scaleMode.scale.x;
-		object.y -= 0.5 * height * (scaleY - initialZoom) * FlxG.scaleMode.scale.y;
+		object.x -= originFactor.x * width * (scaleX - initialZoom) * FlxG.scaleMode.scale.x;
+		object.y -= originFactor.y * height * (scaleY - initialZoom) * FlxG.scaleMode.scale.y;
 
 		return object;
 	}
@@ -981,14 +1005,14 @@ class FlxCamera extends FlxBasic
 	/**
 	 * Instantiates a new camera at the specified location, with the specified size and zoom level.
 	 *
-	 * @param   x       X location of the camera's display in pixels. Uses native, 1:1 resolution, ignores zoom.
-	 * @param   y       Y location of the camera's display in pixels. Uses native, 1:1 resolution, ignores zoom.
-	 * @param   width   The width of the camera display in pixels.
-	 * @param   height  The height of the camera display in pixels.
-	 * @param   zoom    The initial zoom level of the camera.
-	 *                  A zoom level of 2 will make all pixels display at 2x resolution.
+	 * @param   X        X location of the camera's display in pixels. Uses native, 1:1 resolution, ignores zoom.
+	 * @param   Y        Y location of the camera's display in pixels. Uses native, 1:1 resolution, ignores zoom.
+	 * @param   Width    The width of the camera display in pixels.
+	 * @param   Height   The height of the camera display in pixels.
+	 * @param   Zoom     The initial zoom level of the camera.
+	 *                   A zoom level of 2 will make all pixels display at 2x resolution.
 	 */
-	public function new(x = 0.0, y = 0.0, width = 0, height = 0, zoom = 0.0)
+	public function new(X:Float = 0, Y:Float = 0, Width:Int = 0, Height:Int = 0, zoom:Float = 0)
 	{
 		super();
 
@@ -998,14 +1022,11 @@ class FlxCamera extends FlxBasic
 		if (zoom == 0)
 			zoom = defaultZoom;
 		
+		originFactor = new FlxCallbackPoint(_ -> setScale(scaleX, scaleY));
+
 		// Use the game dimensions if width / height are <= 0
-		if (width <= 0)
-			width = Math.ceil(FlxG.width / zoom);
-		if (height <= 0)
-			height = Math.ceil(FlxG.height / zoom);
-		
-		this.width = width;
-		this.height = height;
+		width = (Width <= 0) ? FlxG.width : Width;
+		height = (Height <= 0) ? FlxG.height : Height;
 		_flashRect = new Rectangle(0, 0, width, height);
 
 		flashSprite.addChild(_scrollRect);
@@ -1043,6 +1064,7 @@ class FlxCamera extends FlxBasic
 		updateFlashOffset();
 		updateFlashSpritePosition();
 		updateInternalSpritePositions();
+		resetOrigin();
 
 		bgColor = FlxG.cameras.bgColor;
 	}
@@ -1090,9 +1112,15 @@ class FlxCamera extends FlxBasic
 		}
 
 		_bounds = FlxDestroyUtil.put(_bounds);
+		originFactor = FlxDestroyUtil.destroy(originFactor);
 		scroll = FlxDestroyUtil.put(scroll);
+		followLead = FlxDestroyUtil.put(followLead);
 		targetOffset = FlxDestroyUtil.put(targetOffset);
 		deadzone = FlxDestroyUtil.put(deadzone);
+		_point = FlxDestroyUtil.put(_point);
+		_lastTargetPosition = FlxDestroyUtil.put(_lastTargetPosition);
+		_flashOffset = FlxDestroyUtil.put(_flashOffset);
+		_scrollTarget = FlxDestroyUtil.put(_scrollTarget);
 
 		target = null;
 		flashSprite = null;
@@ -1119,6 +1147,8 @@ class FlxCamera extends FlxBasic
 		}
 
 		updateScroll();
+		updateFlashSpritePosition();
+
 		updateFlash(elapsed);
 		updateFade(elapsed);
 
@@ -1146,29 +1176,41 @@ class FlxCamera extends FlxBasic
 	 */
 	public function bindScrollPos(scrollPos:FlxPoint)
 	{
-		final minX:Null<Float> = minScrollX == null ? null : minScrollX - viewMarginLeft;
-		final maxX:Null<Float> = maxScrollX == null ? null : maxScrollX - viewMarginRight;
-		final minY:Null<Float> = minScrollY == null ? null : minScrollY - viewMarginTop;
-		final maxY:Null<Float> = maxScrollY == null ? null : maxScrollY - viewMarginBottom;
+		var minX:Null<Float> = minScrollX == null ? null : minScrollX - (zoom - 1) * width / (2 * zoom);
+		var maxX:Null<Float> = maxScrollX == null ? null : maxScrollX + (zoom - 1) * width / (2 * zoom);
+		var minY:Null<Float> = minScrollY == null ? null : minScrollY - (zoom - 1) * height / (2 * zoom);
+		var maxY:Null<Float> = maxScrollY == null ? null : maxScrollY + (zoom - 1) * height / (2 * zoom);
 
-		// keep point within bounds
-		scrollPos.x = FlxMath.bound(scrollPos.x, minX, maxX);
-		scrollPos.y = FlxMath.bound(scrollPos.y, minY, maxY);
+		// Make sure we didn't go outside the camera's bounds
+		scrollPos.x = FlxMath.bound(scrollPos.x, minX, (maxX != null) ? maxX - width : null);
+		scrollPos.y = FlxMath.bound(scrollPos.y, minY, (maxY != null) ? maxY - height : null);
 		return scrollPos;
+	}
+
+	public function resetOrigin():Void
+	{
+		originFactor.set(0.5, 0.5);
+	}
+
+	public function getOrigin(?point:FlxPoint):FlxPoint
+	{
+		if (point == null)
+			point = FlxPoint.get();
+		return point.set(originFactor.x * width, originFactor.y * height);
 	}
 
 	/**
 	 * Updates camera's scroll.
 	 * Called every frame by camera's `update()` method (if camera's `target` isn't `null`).
 	 */
-	function updateFollow():Void
+	public function updateFollow():Void
 	{
 		// Either follow the object closely,
 		// or double check our deadzone and update accordingly.
 		if (deadzone == null)
 		{
 			target.getMidpoint(_point);
-			_point.add(targetOffset);
+			_point.addPoint(targetOffset);
 			_scrollTarget.set(_point.x - width * 0.5, _point.y - height * 0.5);
 		}
 		else
@@ -1301,6 +1343,21 @@ class FlxCamera extends FlxBasic
 			_fxFadeComplete();
 	}
 
+	@:noCompletion final __realBounds = new FlxRect();
+
+	@:noCompletion function __get__bounds():FlxRect
+	{
+		__realBounds.set(viewMarginLeft, viewMarginTop, viewWidth, viewHeight);
+		return __get__rotated__bounds();
+	}
+
+	// Behavior got cut down during testing.
+	@:noCompletion extern inline function __get__rotated__bounds():FlxRect
+	{
+		return __realBounds.getRotatedBounds(0, FlxPoint.weak(__realBounds.width * originFactor.x, __realBounds.height * originFactor.x),
+			__realBounds);
+	}
+
 	function updateShake(elapsed:Float):Void
 	{
 		if (_fxShakeDuration > 0)
@@ -1360,6 +1417,22 @@ class FlxCamera extends FlxBasic
 		_flashOffset.y = height * 0.5 * FlxG.scaleMode.scale.y * initialZoom;
 	}
 
+	@:noCompletion var __offsetX:Float = 0;
+	@:noCompletion var __offsetY:Float = 0;
+
+	var scrlRect:Rectangle;
+
+	function calculateScrollRect()
+	{
+		if (_scrollRect != null)
+		{
+			var rect:Rectangle = _scrollRect.scrollRect == null ? new Rectangle() : _scrollRect.scrollRect;
+			rect.setTo(0, 0, width * initialZoom * FlxG.scaleMode.scale.x, height * initialZoom * FlxG.scaleMode.scale.y);
+			return scrlRect = rect;
+		}
+		return scrlRect = null;
+	}
+
 	/**
 	 * Updates `_scrollRect` sprite to crop graphics of the camera:
 	 * 1) `scrollRect` property of this sprite
@@ -1370,20 +1443,18 @@ class FlxCamera extends FlxBasic
 	 */
 	function updateScrollRect():Void
 	{
-		var rect:Rectangle = (_scrollRect != null) ? _scrollRect.scrollRect : null;
+		calculateScrollRect();
 
-		if (rect != null)
-		{
-			rect.x = rect.y = 0;
+		var w = width * initialZoom * FlxG.scaleMode.scale.x;
+		var h = height * initialZoom * FlxG.scaleMode.scale.y;
 
-			rect.width = width * initialZoom * FlxG.scaleMode.scale.x;
-			rect.height = height * initialZoom * FlxG.scaleMode.scale.y;
+		_scrollRect.x = _scrollRect.y = 0;
+		__offsetX = 0;
+		__offsetY = 0;
+		_scrollRect.scrollRect = scrlRect;
 
-			_scrollRect.scrollRect = rect;
-
-			_scrollRect.x = -0.5 * rect.width;
-			_scrollRect.y = -0.5 * rect.height;
-		}
+		_scrollRect.x -= w * 0.5;
+		_scrollRect.y -= h * 0.5;
 	}
 
 	/**
@@ -1406,8 +1477,8 @@ class FlxCamera extends FlxBasic
 		{
 			if (canvas != null)
 			{
-				canvas.x = -0.5 * width * (scaleX - initialZoom) * FlxG.scaleMode.scale.x;
-				canvas.y = -0.5 * height * (scaleY - initialZoom) * FlxG.scaleMode.scale.y;
+				canvas.x = -originFactor.x * width * (scaleX - initialZoom) * FlxG.scaleMode.scale.x;
+				canvas.y = -originFactor.y * height * (scaleY - initialZoom) * FlxG.scaleMode.scale.y;
 
 				canvas.scaleX = totalScaleX;
 				canvas.scaleY = totalScaleY;
@@ -1598,11 +1669,11 @@ class FlxCamera extends FlxBasic
 	 */
 	public function stopFX():Void
 	{
+		_fxFlashAlpha = 0.0;
 		_fxFadeAlpha = 0.0;
 		_fxFadeDuration = 0.0;
-		_fxFlashAlpha = 0.0;
-		updateFlashSpritePosition();
 		_fxShakeDuration = 0.0;
+		updateFlashSpritePosition();
 	}
 
 	/**
@@ -1657,13 +1728,16 @@ class FlxCamera extends FlxBasic
 		}
 		else
 		{
-			final targetGraphics = (graphics == null) ? canvas.graphics : graphics;
+			if (FxAlpha == 0)
+				return;
 
+			final bounds = __get__bounds();
+			final targetGraphics = graphics == null ? canvas.graphics : graphics;
 			targetGraphics.overrideBlendMode(null);
 			targetGraphics.beginFill(Color, FxAlpha);
 			// i'm drawing rect with these parameters to avoid light lines at the top and left of the camera,
 			// which could appear while cameras fading
-			targetGraphics.drawRect(viewMarginLeft - 1, viewMarginTop - 1, viewWidth + 2, viewHeight + 2);
+			targetGraphics.drawRect(bounds.x, bounds.y, bounds.width, bounds.height);
 			targetGraphics.endFill();
 		}
 	}
@@ -1851,6 +1925,15 @@ class FlxCamera extends FlxBasic
 		setScale(scaleX, scaleY);
 	}
 	
+	@deprecated("getViewMarginRect")
+	public function getViewRect(?rect:FlxRect)
+	{
+		if (rect == null)
+			rect = FlxRect.get();
+
+		return rect.set(viewMarginLeft, viewMarginTop, viewWidth, viewHeight);
+	}
+
 	/**
 	 * The size and position of this camera's margins, via `viewMarginLeft`, `viewMarginTop`, `viewWidth`
 	 * and `viewHeight`.
@@ -1871,29 +1954,32 @@ class FlxCamera extends FlxBasic
 	 */
 	public inline function containsPoint(point:FlxPoint, width:Float = 0, height:Float = 0):Bool
 	{
-		var contained = (point.x + width > viewMarginLeft) && (point.x < viewMarginRight)
-			&& (point.y + height > viewMarginTop) && (point.y < viewMarginBottom);
+		var contained = (point.x + width > viewMarginLeft) && (point.x < viewMarginRight) && (point.y + height > viewMarginTop) && (point.y < viewMarginBottom);
 		point.putWeak();
 		return contained;
 	}
-	
+
+	@:noCompletion inline function __containsPoint(point:FlxPoint, X:Float = 0, Y:Float = 0):Bool
+		return FlxMath.pointInFlxRect(X, Y, __get__bounds());
+
 	/**
 	 * Checks whether this camera contains a given rectangle, in screen coordinates.
 	 * @since 4.11.0
 	 */
 	public inline function containsRect(rect:FlxRect):Bool
 	{
-		var contained = (rect.right > viewMarginLeft) && (rect.x < viewMarginRight)
-			&& (rect.bottom > viewMarginTop) && (rect.y < viewMarginBottom);
-		rect.putWeak();
-		return contained;
+		return __get__bounds().overlaps(rect);
 	}
 
+	function get_width():Int
+	{
+		return _width == null ? FlxG.width : _width;
+	}
 	function set_width(Value:Int):Int
 	{
-		if (width != Value && Value > 0)
+		if (_width != Value)
 		{
-			width = Value;
+			_width = Value > 0 ? Value : null;
 			calcMarginX();
 			updateFlashOffset();
 			updateScrollRect();
@@ -1904,11 +1990,15 @@ class FlxCamera extends FlxBasic
 		return Value;
 	}
 
+	function get_height():Int
+	{
+		return _height == null ? FlxG.height : _height;
+	}
 	function set_height(Value:Int):Int
 	{
-		if (height != Value && Value > 0)
+		if (_height != Value)
 		{
-			height = Value;
+			_height = Value > 0 ? Value : null;
 			calcMarginY();
 			updateFlashOffset();
 			updateScrollRect();
@@ -1933,10 +2023,9 @@ class FlxCamera extends FlxBasic
 		{
 			_flashBitmap.alpha = Alpha;
 		}
-		else
-		{
+		else if (canvas != null)
 			canvas.alpha = Alpha;
-		}
+
 		return Alpha;
 	}
 
@@ -2014,14 +2103,26 @@ class FlxCamera extends FlxBasic
 		return this.visible = visible;
 	}
 
-	inline function calcMarginX():Void
+	@:deprecated("Use calcMarginX")
+	inline function calcOffsetX():Void
+		calcMarginX();
+
+	@:deprecated("Use calcMarginY")
+	inline function calcOffsetY():Void
+		calcMarginY();
+
+	function calcMarginX():Void
 	{
-		viewMarginX = 0.5 * width * (scaleX - initialZoom) / scaleX;
+		viewAdjustScaleX = (scaleX - initialZoom) / scaleX;
+		viewMarginX = originFactor.x * width * viewAdjustScaleX;
+		viewWidth = width - viewMarginX * 2;
 	}
 
-	inline function calcMarginY():Void
+	function calcMarginY():Void
 	{
-		viewMarginY = 0.5 * height * (scaleY - initialZoom) / scaleY;
+		viewAdjustScaleY = (scaleY - initialZoom) / scaleY;
+		viewMarginY = originFactor.y * height * viewAdjustScaleY;
+		viewHeight = height - viewMarginY * 2;
 	}
 	
 	static inline function get_defaultCameras():Array<FlxCamera>
@@ -2054,16 +2155,6 @@ class FlxCamera extends FlxBasic
 		return height - viewMarginY;
 	}
 	
-	inline function get_viewWidth():Float
-	{
-		return width - viewMarginX * 2;
-	}
-	
-	inline function get_viewHeight():Float
-	{
-		return height - viewMarginY * 2;
-	}
-	
 	inline function get_viewX():Float
 	{
 		return scroll.x + viewMarginX;
@@ -2094,6 +2185,38 @@ class FlxCamera extends FlxBasic
 		return scroll.y + viewMarginBottom;
 	}
 	
+	// deprecated vars
+
+	inline function get_viewOffsetX():Float
+	{
+		return viewMarginX;
+	}
+
+	inline function set_viewOffsetX(value:Float):Float
+	{
+		return viewMarginX = value;
+	}
+
+	inline function get_viewOffsetY():Float
+	{
+		return viewMarginY;
+	}
+
+	inline function set_viewOffsetY(value:Float):Float
+	{
+		return viewMarginY = value;
+	}
+
+	inline function get_viewOffsetWidth():Float
+	{
+		return viewMarginRight;
+	}
+
+	inline function get_viewOffsetHeight():Float
+	{
+		return viewMarginBottom;
+	}
+
 	/**
 	 * Do not use the following fields! They only exists because FlxCamera extends FlxBasic,
 	 * we're hiding them because they've only caused confusion.
