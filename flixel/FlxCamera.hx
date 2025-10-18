@@ -921,6 +921,7 @@ class FlxCamera extends FlxBasic
 		{
 			final isColored = (colors != null && colors.length != 0) || (transform != null && transform.hasRGBMultipliers());
 			final hasColorOffsets = (transform != null && transform.hasRGBAOffsets());
+			_bounds.set(0, 0, width, height);
 
 			final drawItem = startTrianglesBatch(graphic, smoothing, isColored, blend, hasColorOffsets, shader);
 			drawItem.addTriangles(vertices, indices, uvtData, colors, position, _bounds, transform);
